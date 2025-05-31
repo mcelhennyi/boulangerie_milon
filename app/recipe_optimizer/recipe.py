@@ -1,5 +1,5 @@
 from typing import List, Dict
-from recipe_stage import RecipeStage
+from app.recipe_optimizer.recipe_stage import RecipeStage
 
 from dataclasses import dataclass
 from typing import Optional
