@@ -1,12 +1,12 @@
-"""Recipe stage management module for handling recipe preparation steps and their dependencies."""
+"""Module for managing recipe stages and their dependencies."""
 from enum import Enum
 from typing import Set
 from datetime import datetime
 
 
 class ResourceType(Enum):
-    """Available resource types that can be required by recipe stages."""
-    COUNTER_SPACE = "counter_space"
+    """Enumeration of resources required for recipe stages."""
+    COUNTER_SPACE = "counter"
     OVEN = "oven"
     FRIDGE = "fridge"
     STOVETOP = "stovetop"
@@ -15,30 +15,26 @@ class ResourceType(Enum):
 
 
 class StageType(Enum):
-    """Types of stages in recipe preparation."""
-    PREP = "prep"
-    COOK = "cook"
-    BAKE = "bake"
-    CHILL = "chill"
-    REST = "rest"
-    MIX = "mix"
+    """Enumeration of possible recipe stage types."""
+    PREP = "preparation"
+    COOK = "cooking"
+    BAKE = "baking"
+    CHILL = "chilling"
+    REST = "resting"
+    MIX = "mixing"
 
 
 class RecipeStage:
-    """
-    A recipe stage represents a single step in recipe preparation.
-
-    Each stage has a type, start and end time, and required resources.
-    """
+    """A class representing a stage in a recipe with timing and resource requirements."""
 
     def __init__(self, stage_type: StageType, start_time: datetime, end_time: datetime):
         """
-        Initialize a new recipe stage.
+        Initialize a recipe stage.
 
         Args:
-            stage_type: The type of the stage (e.g., PREP, COOK)
-            start_time: When the stage should start
-            end_time: When the stage should end
+            stage_type: Type of the stage (prep, cook, etc.)
+            start_time: When the stage starts
+            end_time: When the stage ends
         """
         self.stage_type = stage_type
         self.start_time = start_time
@@ -50,13 +46,13 @@ class RecipeStage:
         self.required_resources.add(resource)
 
     def remove_resource_dependency(self, resource: ResourceType) -> None:
-        """Remove a resource dependency from this stage."""
+        """Remove a resource requirement from this stage."""
         self.required_resources.remove(resource)
 
     def get_duration(self) -> float:
-        """Get the duration of this stage in seconds."""
+        """Calculate the duration of this stage in seconds."""
         return (self.end_time - self.start_time).total_seconds()
 
     def get_required_resources(self) -> Set[ResourceType]:
-        """Get the set of resources required for this stage."""
+        """Get all resources required for this stage."""
         return self.required_resources
