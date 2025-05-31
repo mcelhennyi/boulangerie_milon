@@ -107,7 +107,8 @@ class QuantityResource(Resource):
 
     def _get_description(self) -> str:
         return (f"{self.type.value}: {len(self._children)} {self.unit} "
-                f"(capacity: {self.max_items} {self.unit})")
+                f"(capacity: {self.max_items} {self.unit}, "
+                f"utilization: {self.get_utilization():.1%})")
 
     def can_add_child(self, child: Resource) -> bool:
         return len(self._children) < self.max_items
