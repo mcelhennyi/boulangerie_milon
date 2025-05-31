@@ -1,7 +1,5 @@
 from typing import List, Dict
 from recipe_stage import RecipeStage
-from dataclasses import dataclass
-from typing import Optional
 
 from dataclasses import dataclass
 from typing import Optional
@@ -37,18 +35,29 @@ class Ingredient:
 
 class Recipe:
     def __init__(self, name: str, selling_price: Decimal = Decimal('0'), 
-                 overhead_cost: Decimal = Decimal('0')):
+                 overhead_cost: Decimal = Decimal('0'), target_profit_margin: Decimal = None):
         self.name = name
         self.ingredients: Dict[str, Ingredient] = {}
         self.stages: List[RecipeStage] = []
         self.selling_price = selling_price
         self.overhead_cost = overhead_cost
         self.servings: int = 1
+        self.target_profit_margin = target_profit_margin
+
+        # If a target margin is provided, calculate the price automatically
+        if target_profit_margin is not None:
+            self._auto_calculate_price = True
+        else:
+            self._auto_calculate_price = False
 
     def add_ingredient(self, name: str, quantity: float, unit: str, 
                       cost_per_unit: Decimal, description: Optional[str] = None) -> None:
         """Add a new ingredient to the recipe."""
         self.ingredients[name] = Ingredient(name, quantity, unit, cost_per_unit, description)
+
+        # Recalculate price if auto price calculation is enabled
+        if self._auto_calculate_price:
+            self.calculate_price_from_margin()
 
     def remove_ingredient(self, ingredient_name: str) -> bool:
         """Remove an ingredient from the recipe."""
@@ -70,6 +79,10 @@ class Recipe:
         for ingredient in self.ingredients.values():
             ingredient.scale(factor)
         self.servings = int(self.servings * factor)
+
+        # Recalculate price if auto price calculation is enabled
+        if self._auto_calculate_price:
+            self.calculate_price_from_margin()
 
     def set_servings(self, count: int) -> None:
         """Set the number of servings for the recipe."""
@@ -125,6 +138,10 @@ class Recipe:
         """Set the overhead cost for the recipe."""
         self.overhead_cost = cost
 
+        # Recalculate price if auto price calculation is enabled
+        if self._auto_calculate_price:
+            self.calculate_price_from_margin()
+
     def get_cost_breakdown(self) -> dict:
         """Get a detailed breakdown of all costs."""
         return {
@@ -138,6 +155,8 @@ class Recipe:
             "total_revenue": self.get_revenue(),
             "profit": self.get_profit(),
             "profit_margin": self.get_profit_margin(),
+            "target_profit_margin": self.target_profit_margin,
+            "auto_price_calculation": self._auto_calculate_price,
             "servings": self.servings
         }
 
@@ -147,6 +166,10 @@ class Recipe:
     def add_stage(self, stage: RecipeStage) -> None:
         """Add a new stage to the recipe."""
         self.stages.append(stage)
+
+        # Recalculate price if auto price calculation is enabled
+        if self._auto_calculate_price:
+            self.calculate_price_from_margin()
 
     def remove_stage(self, stage: RecipeStage) -> bool:
         """Remove a stage from the recipe."""
@@ -169,6 +192,22 @@ class Recipe:
         suggested_price = cost_per_serving * (1 + target_margin / Decimal('100'))
         return suggested_price.quantize(Decimal('0.01'))
 
+    def calculate_price_from_margin(self) -> Decimal:
+        """Calculate and set the selling price based on the target profit margin."""
+        if self.target_profit_margin is None:
+            return self.selling_price
+
+        self.selling_price = self.suggest_selling_price(self.target_profit_margin)
+        return self.selling_price
+
+    def set_target_profit_margin(self, margin: Decimal, auto_update_price: bool = True) -> None:
+        """Set the target profit margin and optionally update the price."""
+        self.target_profit_margin = margin
+        self._auto_calculate_price = auto_update_price
+
+        if auto_update_price:
+            self.calculate_price_from_margin()
+
 
 def main():
     """Test the Recipe class functionality with cost analysis."""
@@ -176,13 +215,26 @@ def main():
     from recipe_stage import StageType, ResourceType
     from decimal import Decimal
 
-    # Create a new recipe with selling price and overhead
-    croissant = Recipe(
-        "Classic French Croissants",
+    # Create recipes with different pricing approaches
+
+    # 1. Manual pricing
+    croissant_manual = Recipe(
+        "Classic French Croissants (Manual Pricing)",
         selling_price=Decimal('3.50'),  # $3.50 per croissant
         overhead_cost=Decimal('5.00')   # $5.00 fixed overhead per batch
     )
-    croissant.set_servings(12)  # One batch makes 12 croissants
+    croissant_manual.set_servings(12)  # One batch makes 12 croissants
+
+    # 2. Auto pricing with target margin
+    croissant_auto = Recipe(
+        "Classic French Croissants (Auto Pricing)",
+        overhead_cost=Decimal('5.00'),  # $5.00 fixed overhead per batch
+        target_profit_margin=Decimal('35')  # 35% profit margin target
+    )
+    croissant_auto.set_servings(12)  # One batch makes 12 croissants
+
+    # For simplicity, we'll only add ingredients to the auto-priced recipe from now on
+    croissant = croissant_auto
 
     # Add ingredients with costs
     croissant.add_ingredient(
@@ -288,10 +340,34 @@ def main():
     print(f"Cost per serving: ${cost_breakdown['cost_per_serving']:.2f}")
     
     print("\nRevenue Analysis:")
+    print(f"Target profit margin: {cost_breakdown['target_profit_margin']}%")
+    print(f"Auto price calculation: {cost_breakdown['auto_price_calculation']}")
     print(f"Selling price per serving: ${cost_breakdown['selling_price_per_serving']:.2f}")
     print(f"Total revenue: ${cost_breakdown['total_revenue']:.2f}")
     print(f"Total profit: ${cost_breakdown['profit']:.2f}")
-    print(f"Profit margin: {cost_breakdown['profit_margin']:.1f}%")
+    print(f"Actual profit margin: {cost_breakdown['profit_margin']:.1f}%")
+
+    # Add same ingredients to manual recipe for comparison
+    for name, ingredient in croissant.get_all_ingredients().items():
+        croissant_manual.add_ingredient(
+            name, ingredient.quantity, ingredient.unit, 
+            ingredient.cost_per_unit, ingredient.description
+        )
+
+    # Add same stages to manual recipe
+    for stage in croissant.get_stages():
+        croissant_manual.add_stage(stage)
+
+    # Compare manual vs auto pricing
+    manual_breakdown = croissant_manual.get_cost_breakdown()
+    auto_breakdown = croissant.get_cost_breakdown()
+
+    print("\n===== Pricing Comparison =====")
+    print("Manual vs Auto Pricing:")
+    print(f"Manual price: ${manual_breakdown['selling_price_per_serving']:.2f} per serving")
+    print(f"Auto price: ${auto_breakdown['selling_price_per_serving']:.2f} per serving")
+    print(f"Manual profit margin: {manual_breakdown['profit_margin']:.1f}%")
+    print(f"Auto profit margin: {auto_breakdown['profit_margin']:.1f}%")
 
     # Test price suggestions
     target_margins = [25, 50, 75]
@@ -308,6 +384,23 @@ def main():
     print(f"New total cost: ${new_cost['total_cost']:.2f}")
     print(f"New total revenue: ${new_cost['total_revenue']:.2f}")
     print(f"New profit: ${new_cost['profit']:.2f}")
+
+    # Test changing target profit margin
+    print("\n===== Dynamic Profit Margin Adjustments =====")
+    print("Changing target profit margin from 35% to 50%...")
+    croissant.set_target_profit_margin(Decimal('50'))
+    margin_change = croissant.get_cost_breakdown()
+    print(f"New target margin: {margin_change['target_profit_margin']}%")
+    print(f"New price per serving: ${margin_change['selling_price_per_serving']:.2f}")
+    print(f"New actual margin: {margin_change['profit_margin']:.1f}%")
+
+    # Test adding expensive ingredient and watching price auto-adjust
+    print("\nAdding an expensive ingredient (saffron)...")
+    croissant.add_ingredient("saffron", 0.5, "grams", Decimal('30.00'), "Premium quality saffron")
+    after_addition = croissant.get_cost_breakdown()
+    print(f"New cost per serving: ${after_addition['cost_per_serving']:.2f}")
+    print(f"New price per serving: ${after_addition['selling_price_per_serving']:.2f}")
+    print(f"Margin maintained at: {after_addition['profit_margin']:.1f}%")
 
 if __name__ == "__main__":
     main()
