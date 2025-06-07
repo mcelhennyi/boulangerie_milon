@@ -1,0 +1,44 @@
+recipe:
+  name: Dinner Rolls
+  description: Soft and fluffy dinner rolls
+  servings: 12
+  ingredients:
+    - name: All Purpose Flour
+      quantity: 500
+    - name: Sugar
+      quantity: 50
+    - name: Salt
+      quantity: 10
+    - name: Yeast
+      quantity: 7
+    - name: Butter
+      quantity: 60
+    - name: Milk
+      quantity: 240
+  stages:
+    - stage_type: PREP
+      sequence_number: 1
+      start_time: "2024-01-01T08:00:00"
+      end_time: "2024-01-01T08:30:00"
+      labor_cost_per_hour: 15.00
+      resources:
+        - name: Stand Mixer
+          cost_per_hour: 5.00
+        - name: Chef
+          cost_per_hour: 25.00
+    - stage_type: PROOF
+      sequence_number: 2
+      start_time: "2024-01-01T08:30:00"
+      end_time: "2024-01-01T10:30:00"
+      labor_cost_per_hour: 15.00
+      resources:
+        - name: Proofing Cabinet
+          cost_per_hour: 3.00
+    - stage_type: PREP
+      sequence_number: 3
+      start_time: "2024-01-01T10:30:00"
+      end_time: "2024-01-01T11:00:00"
+      labor_cost_per_hour: 15.00
+      resources:
+        - name: Oven
+          cost_per_hour: 10.00

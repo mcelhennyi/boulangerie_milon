@@ -11,6 +11,15 @@ class ResourceType(Enum):
     STOVETOP = "stovetop"
     MIXER = "mixer"
     FOOD_PROCESSOR = "food_processor"
+    # Add missing types
+    COOKIE_SHEET = "cookie_sheet"
+    MIXING_BOWL = "mixing_bowl"
+    WORKSPACE = "workspace"
+    PROOFING_CABINET = "proofing_cabinet"
+    LABOR = "labor"
+    OVEN_RACK = "oven_rack"
+    ITEM = "item"
+    STAND_MIXER = "stand_mixer"  # Alias for MIXER
 
 class StageType(Enum):
     """Enumeration of possible recipe stage types."""
@@ -20,6 +29,7 @@ class StageType(Enum):
     CHILL = "chilling"
     REST = "resting"
     MIX = "mixing"
+    PROOF = "proofing"  # Added proofing stage type
 
 class RecipeStage:
     """A class representing a stage in a recipe with timing and resource requirements."""
