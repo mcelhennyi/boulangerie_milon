@@ -1,22 +1,372 @@
-import tkinter as tk
+import logging
 from tkinter import ttk, messagebox
+import tkinter as tk
 from decimal import Decimal
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 from app.recipe_optimizer.recipe import Recipe
 from app.recipe_optimizer.recipe_stage import RecipeStage, StageType, ResourceType
+from app.database.tables import Recipe as DBRecipe, Stage, Ingredient, Resource, recipe_ingredient, stage_resource
 import decimal
 
-
 class RecipeManagerGUI:
-    def __init__(self, root):
+    def __init__(self, root, session, debug=False):
         self.root = root
         self.root.title("Boulangerie Milon Recipe Manager")
-
-        # Current recipe being edited
-        self.current_recipe: Optional[Recipe] = None
-
+        self.session = session
+        self.debug = debug
+        self.current_recipe_id = None
+        
+        # Setup logging
+        self.setup_logging()
+        self.logger.info("Initializing Recipe Manager GUI")
+        
         self.setup_gui()
+        
+    def setup_logging(self):
+        """Configure logging based on debug mode"""
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
+        
+        # Create handlers
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.DEBUG if self.debug else logging.INFO)
+        
+        # Create formatters and add it to handlers
+        if self.debug:
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+            )
+        else:
+            formatter = logging.Formatter(
+                '%(asctime)s - %(levelname)s - %(message)s'
+            )
+        
+        console_handler.setFormatter(formatter)
+        
+        # Add handlers to the logger
+        self.logger.addHandler(console_handler)
+        
+    def refresh_recipe_selector(self):
+        """Refresh the recipe selector with current database state"""
+        self.logger.debug("Refreshing recipe selector")
+        try:
+            recipes = self.session.query(DBRecipe).all()
+            recipe_names = ["-- Create New Recipe --"] + [recipe.name for recipe in recipes]
+            self.recipe_selector['values'] = recipe_names
+            self.logger.debug(f"Found {len(recipes)} recipes in database")
+        except Exception as e:
+            self.logger.error(f"Failed to refresh recipe selector: {str(e)}")
+            raise
+
+    def save_recipe_to_db(self):
+        """Save current recipe state to database"""
+        self.logger.debug("Attempting to save recipe to database")
+        try:
+            name = self.recipe_name.get()
+            servings = int(self.servings.get())
+            
+            if not name:
+                self.logger.warning("Attempted to save recipe without name")
+                messagebox.showerror("Error", "Recipe name is required")
+                return
+                
+            self.logger.debug(f"Saving recipe: {name} with {servings} servings")
+            
+            if self.current_recipe_id is None:
+                self.logger.debug("Creating new recipe")
+                db_recipe = Recipe(name=name, servings=servings)
+                self.session.add(db_recipe)
+                self.session.flush()
+                self.current_recipe_id = db_recipe.id
+                self.logger.info(f"Created new recipe with ID: {self.current_recipe_id}")
+            else:
+                self.logger.debug(f"Updating existing recipe ID: {self.current_recipe_id}")
+                db_recipe = self.session.query(Recipe).get(self.current_recipe_id)
+                db_recipe.name = name
+                db_recipe.servings = servings
+            
+            self.session.commit()
+            self.refresh_recipe_selector()
+            self.logger.info(f"Successfully saved recipe: {name}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to save recipe: {str(e)}")
+            self.session.rollback()
+            messagebox.showerror("Error", f"Failed to save recipe: {str(e)}")
+            return False
+
+    def add_ingredient_to_db(self, name, quantity, unit, cost, description):
+        """Add ingredient to database"""
+        try:
+            if self.current_recipe_id is None:
+                if not self.save_recipe_to_db():
+                    return False
+                    
+            db_recipe = self.session.query(DBRecipe).get(self.current_recipe_id)
+            
+            # Create or update ingredient
+            ingredient = self.session.query(Ingredient).filter_by(
+                name=name, recipe_id=self.current_recipe_id).first()
+                
+            if ingredient is None:
+                ingredient = Ingredient(
+                    name=name,
+                    quantity=quantity,
+                    unit=unit,
+                    cost_per_unit=cost,
+                    description=description
+                )
+                db_recipe.ingredients.append(ingredient)
+            else:
+                ingredient.quantity = quantity
+                ingredient.unit = unit
+                ingredient.cost_per_unit = cost
+                ingredient.description = description
+                
+            self.session.commit()
+            return True
+            
+        except Exception as e:
+            self.session.rollback()
+            messagebox.showerror("Error", f"Failed to save ingredient: {str(e)}")
+            return False
+
+    def add_stage_to_db(self, stage_type, duration, labor_cost):
+        """Add stage to database"""
+        try:
+            if self.current_recipe_id is None:
+                if not self.save_recipe_to_db():
+                    return False
+                    
+            db_recipe = self.session.query(DBRecipe).get(self.current_recipe_id)
+            
+            # Calculate sequence number
+            sequence_number = len(db_recipe.stages) + 1
+            
+            # Create stage
+            start_time = datetime.now()
+            end_time = start_time + timedelta(minutes=duration)
+            
+            stage = Stage(
+                recipe=db_recipe,
+                stage_type=stage_type,
+                sequence_number=sequence_number,
+                start_time=start_time,
+                end_time=end_time,
+                labor_cost_per_hour=labor_cost
+            )
+            
+            self.session.add(stage)
+            self.session.commit()
+            return True
+            
+        except Exception as e:
+            self.session.rollback()
+            messagebox.showerror("Error", f"Failed to save stage: {str(e)}")
+            return False
+
+    def add_resource_to_stage(self, stage_id, resource_type, cost_per_hour):
+        """Add resource to stage in database"""
+        try:
+            # Create or get resource
+            resource = self.session.query(Resource).filter_by(
+                name=resource_type.name,
+                resource_type=resource_type
+            ).first()
+            
+            if resource is None:
+                resource = Resource(
+                    name=resource_type.name,
+                    resource_type=resource_type
+                )
+                self.session.add(resource)
+            
+            # Add to stage with cost
+            stage = self.session.query(Stage).get(stage_id)
+            stage.resources.append(resource)
+            
+            # Set cost in association table
+            self.session.execute(
+                stage_resource.insert().values(
+                    stage_id=stage.id,
+                    resource_id=resource.id,
+                    cost_per_hour=cost_per_hour
+                )
+            )
+            
+            self.session.commit()
+            return True
+            
+        except Exception as e:
+            self.session.rollback()
+            messagebox.showerror("Error", f"Failed to save resource: {str(e)}")
+            return False
+
+    def on_recipe_selected(self, event):
+        """Handle recipe selection"""
+        selection = self.recipe_selector.get()
+        
+        if selection == "-- Create New Recipe --":
+            self.current_recipe_id = None
+            self.clear_all_fields()
+            self.save_button.configure(text="Create Recipe")
+            return
+            
+        # Load the selected recipe from database
+        db_recipe = self.session.query(Recipe).filter(Recipe.name == selection).first()
+        if db_recipe:
+            self.current_recipe_id = db_recipe.id
+            self.load_recipe_from_db(db_recipe)
+            self.save_button.configure(text="Update Recipe")
+
+    def load_recipe_from_db(self, db_recipe):
+        """Load recipe data from database into GUI"""
+        self.clear_all_fields()
+        
+        # Set basic info
+        self.recipe_name.insert(0, db_recipe.name)
+        self.servings.insert(0, str(db_recipe.servings))
+        
+        # Load ingredients
+        for ingredient in db_recipe.ingredients:
+            self.ingredients_tree.insert('', 'end', text=ingredient.name, values=(
+                ingredient.quantity,
+                ingredient.unit,
+                f"${ingredient.cost_per_unit:.2f}",
+                ingredient.description or ""
+            ))
+        
+        # Load stages
+        for stage in sorted(db_recipe.stages, key=lambda x: x.sequence_number):
+            duration = int((stage.end_time - stage.start_time).total_seconds() / 60)
+            resources = ", ".join([f"{r.name}: ${c}/hr" 
+                             for r, c in stage.resource_costs.items()])
+            
+            self.stages_tree.insert('', 'end',
+                              text=str(stage.sequence_number),
+                              values=(stage.stage_type,
+                                    f"{duration} min",
+                                    f"${stage.labor_cost_per_hour}/hr",
+                                    resources))
+
+    def setup_recipe_selector(self, info_frame):
+        # Recipe selector frame
+        selector_frame = ttk.Frame(info_frame)
+        selector_frame.grid(row=0, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        
+        # Get all recipes from database
+        recipes = self.session.query(DBRecipe).all()
+        recipe_names = ["-- Create New Recipe --"] + [recipe.name for recipe in recipes]
+        
+        ttk.Label(selector_frame, text="Select Recipe:").pack(side=tk.LEFT, padx=5)
+        self.recipe_selector = ttk.Combobox(selector_frame, values=recipe_names, state="readonly")
+        self.recipe_selector.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self.recipe_selector.set(recipe_names[0])
+        
+        # Bind selection event
+        self.recipe_selector.bind('<<ComboboxSelected>>', self.on_recipe_selected)
+
+    def setup_recipe_tab(self):
+        # Recipe basic info frame
+        info_frame = ttk.LabelFrame(self.recipe_tab, text="Recipe Information")
+        info_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # Add recipe selector at the top
+        self.setup_recipe_selector(info_frame)
+
+        ttk.Label(info_frame, text="Recipe Name:").grid(row=1, column=0, padx=5, pady=5)
+        self.recipe_name = ttk.Entry(info_frame)
+        self.recipe_name.grid(row=1, column=1, padx=5, pady=5)
+
+        ttk.Label(info_frame, text="Servings:").grid(row=2, column=0, padx=5, pady=5)
+        self.servings = ttk.Spinbox(info_frame, from_=1, to=1000)
+        self.servings.grid(row=2, column=1, padx=5, pady=5)
+
+        # Add create/save recipe button
+        self.save_button = ttk.Button(info_frame, text="Create Recipe",
+                                    command=self.create_new_recipe)
+        self.save_button.grid(row=3, column=0, columnspan=2, pady=5)
+
+        # Rest of the setup remains the same...
+        # [Previous ingredients frame setup code]
+
+    def load_recipe_to_gui(self, recipe):
+        """Load recipe data into GUI fields"""
+        # Clear existing data
+        self.clear_all_fields()
+        
+        # Set basic info
+        self.recipe_name.delete(0, tk.END)
+        self.recipe_name.insert(0, recipe.name)
+        self.servings.delete(0, tk.END)
+        self.servings.insert(0, str(recipe.servings))
+        
+        # Load ingredients
+        for name, ingredient in recipe.ingredients.items():
+            self.ing_name.delete(0, tk.END)
+            self.ing_quantity.delete(0, tk.END)
+            self.ing_unit.delete(0, tk.END)
+            self.ing_cost.delete(0, tk.END)
+            self.ing_desc.delete(0, tk.END)
+            
+            self.ing_name.insert(0, name)
+            self.ing_quantity.insert(0, str(ingredient.quantity))
+            self.ing_unit.insert(0, ingredient.unit)
+            self.ing_cost.insert(0, str(ingredient.cost_per_unit))
+            self.ing_desc.insert(0, ingredient.description or "")
+            
+            self.add_ingredient()
+        
+        # Load stages
+        for stage in recipe.stages:
+            duration_minutes = int((stage.end_time - stage.start_time).total_seconds() / 60)
+            
+            self.stage_type.set(stage.stage_type.name)
+            self.stage_duration.delete(0, tk.END)
+            self.stage_duration.insert(0, str(duration_minutes))
+            self.labor_cost.delete(0, tk.END)
+            self.labor_cost.insert(0, str(stage.labor_cost_per_hour))
+            
+            self.add_stage()
+            
+            # Add resources for this stage
+            for resource_type, cost in stage.resource_costs.items():
+                self.resource_type.set(resource_type.name)
+                self.resource_cost.delete(0, tk.END)
+                self.resource_cost.insert(0, str(cost))
+                
+                self.add_resource()
+
+    def clear_all_fields(self):
+        """Clear all fields in the GUI"""
+        self.recipe_name.delete(0, tk.END)
+        self.servings.delete(0, tk.END)
+        self.servings.insert(0, "1")
+        
+        # Clear ingredients
+        for item in self.ingredients_tree.get_children():
+            self.ingredients_tree.delete(item)
+        
+        # Clear stages
+        for item in self.stages_tree.get_children():
+            self.stages_tree.delete(item)
+        
+        # Clear resources
+        for item in self.resources_tree.get_children():
+            self.resources_tree.delete(item)
+        
+        # Reset input fields
+        self.clear_ingredient_inputs()
+        self.clear_stage_inputs()
+        self.resource_type.set('')
+        self.resource_cost.delete(0, tk.END)
+        
+        # Reset cost fields
+        self.overhead_cost.delete(0, tk.END)
+        self.profit_margin.delete(0, tk.END)
+        self.auto_calculate.set(False)
 
     def setup_gui(self):
         # Create main notebook for tabs
@@ -38,63 +388,6 @@ class RecipeManagerGUI:
         self.setup_stages_tab()
         self.setup_resources_tab()
         self.setup_costs_tab()
-
-    def setup_recipe_tab(self):
-        # Recipe basic info frame
-        info_frame = ttk.LabelFrame(self.recipe_tab, text="Recipe Information")
-        info_frame.pack(fill=tk.X, padx=5, pady=5)
-
-        ttk.Label(info_frame, text="Recipe Name:").grid(row=0, column=0, padx=5, pady=5)
-        self.recipe_name = ttk.Entry(info_frame)
-        self.recipe_name.grid(row=0, column=1, padx=5, pady=5)
-
-        ttk.Label(info_frame, text="Servings:").grid(row=1, column=0, padx=5, pady=5)
-        self.servings = ttk.Spinbox(info_frame, from_=1, to=1000)
-        self.servings.grid(row=1, column=1, padx=5, pady=5)
-
-        # Add create recipe button
-        ttk.Button(info_frame, text="Create Recipe",
-                   command=self.create_new_recipe).grid(row=2, column=0, columnspan=2, pady=5)
-
-        # Ingredients frame
-        ingredients_frame = ttk.LabelFrame(self.recipe_tab, text="Ingredients")
-        ingredients_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # Ingredients list
-        self.ingredients_tree = ttk.Treeview(ingredients_frame, columns=("Quantity", "Unit", "Cost", "Description"))
-        self.ingredients_tree.heading("#0", text="Name")
-        self.ingredients_tree.heading("Quantity", text="Quantity")
-        self.ingredients_tree.heading("Unit", text="Unit")
-        self.ingredients_tree.heading("Cost", text="Cost/Unit")
-        self.ingredients_tree.heading("Description", text="Description")
-        self.ingredients_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # Add ingredient frame
-        add_ingredient_frame = ttk.Frame(ingredients_frame)
-        add_ingredient_frame.pack(fill=tk.X, padx=5, pady=5)
-
-        # Create entry widgets without placeholder parameter
-        self.ing_name = ttk.Entry(add_ingredient_frame)
-        self.ing_quantity = ttk.Entry(add_ingredient_frame)
-        self.ing_unit = ttk.Entry(add_ingredient_frame)
-        self.ing_cost = ttk.Entry(add_ingredient_frame)
-        self.ing_desc = ttk.Entry(add_ingredient_frame)
-
-        # Set default text and bind focus events
-        self.setup_placeholder(self.ing_name, "Name")
-        self.setup_placeholder(self.ing_quantity, "Quantity")
-        self.setup_placeholder(self.ing_unit, "Unit")
-        self.setup_placeholder(self.ing_cost, "Cost/Unit")
-        self.setup_placeholder(self.ing_desc, "Description")
-
-        self.ing_name.grid(row=0, column=0, padx=2)
-        self.ing_quantity.grid(row=0, column=1, padx=2)
-        self.ing_unit.grid(row=0, column=2, padx=2)
-        self.ing_cost.grid(row=0, column=3, padx=2)
-        self.ing_desc.grid(row=0, column=4, padx=2)
-
-        ttk.Button(add_ingredient_frame, text="Add Ingredient",
-                   command=self.add_ingredient).grid(row=0, column=5, padx=2)
 
     def setup_stages_tab(self):
         # Stages list frame
@@ -199,59 +492,35 @@ class RecipeManagerGUI:
             self.cost_labels[cost].grid(row=i, column=1, padx=5, pady=2)
 
     def add_ingredient(self):
+        """Handle add ingredient button click"""
         try:
             name = self.ing_name.get()
-            if name == "Name":  # Check if it's still the placeholder
-                return
-        
-            quantity_text = self.ing_quantity.get()
-            if quantity_text == "Quantity":  # Check if it's still the placeholder
-                return
-            quantity = float(quantity_text)
-        
-            unit = self.ing_unit.get()
-            if unit == "Unit":  # Check if it's still the placeholder
+            if name == "Name":
                 return
             
-            cost_text = self.ing_cost.get()
-            if cost_text == "Cost/Unit":  # Check if it's still the placeholder
-                return
-            cost = Decimal(cost_text)
-        
+            quantity = float(self.ing_quantity.get())
+            unit = self.ing_unit.get()
+            cost = Decimal(self.ing_cost.get())
             desc = self.ing_desc.get()
-            if desc == "Description":  # Check if it's still the placeholder
-                desc = ""  # Or return, depending on your requirements
-
-            if self.current_recipe:
-                self.current_recipe.add_ingredient(name, quantity, unit, cost, desc)
-                self.refresh_ingredients()
-                self.update_costs()
-
-            self.clear_ingredient_inputs()
-
+            
+            if self.add_ingredient_to_db(name, quantity, unit, cost, desc):
+                self.refresh_ingredients_from_db()
+                self.clear_ingredient_inputs()
+                
         except (ValueError, decimal.InvalidOperation) as e:
             messagebox.showerror("Error", "Invalid input values")
 
     def add_stage(self):
+        """Handle add stage button click"""
         try:
             stage_type = StageType[self.stage_type.get()]
             duration = int(self.stage_duration.get())
             labor_cost = Decimal(self.labor_cost.get())
-
-            if self.current_recipe:
-                start_time = datetime.now()
-                stage = RecipeStage(
-                    stage_type,
-                    start_time,
-                    start_time + timedelta(minutes=duration),
-                    labor_cost
-                )
-                self.current_recipe.add_stage(stage)
-                self.refresh_stages()
-                self.update_costs()
-
-            self.clear_stage_inputs()
-
+        
+            if self.add_stage_to_db(stage_type, duration, labor_cost):
+                self.refresh_stages_from_db()
+                self.clear_stage_inputs()
+                
         except (ValueError, decimal.InvalidOperation) as e:
             messagebox.showerror("Error", "Invalid input values")
 
@@ -321,18 +590,8 @@ class RecipeManagerGUI:
             messagebox.showerror("Error", "Invalid input values")
 
     def create_new_recipe(self):
-        """Creates a new recipe when recipe name and servings are set"""
-        try:
-            name = self.recipe_name.get()
-            servings = int(self.servings.get())
-            if not name:
-                messagebox.showerror("Error", "Please enter a recipe name")
-                return
-            self.current_recipe = Recipe(name, servings)
-            # Enable the rest of the interface
-            messagebox.showinfo("Success", f"Created new recipe: {name}")
-        except ValueError:
-            messagebox.showerror("Error", "Please enter valid servings number")
+        """Handle create/update recipe button click"""
+        self.save_recipe_to_db()
 
     def clear_ingredient_inputs(self):
         """Clears all ingredient input fields"""

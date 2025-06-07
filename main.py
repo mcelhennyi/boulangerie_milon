@@ -272,6 +272,79 @@ def delete_database(connection_string: str) -> None:
         logger.error(f"Error deleting database: {e}")
         raise
 
+import tkinter as tk
+from app.gui.gui import RecipeManagerGUI
+from sqlalchemy.orm import Session
+from app.recipe_optimizer.recipe import Recipe
+from app.database.tables import Recipe as DBRecipe, Stage, Ingredient, Resource
+from datetime import datetime
+
+def load_recipe_from_db(db_recipe: DBRecipe, session: Session) -> Recipe:
+    """Convert a database recipe to a Recipe object."""
+    recipe = Recipe(db_recipe.name, db_recipe.servings)
+    
+    # Load ingredients
+    for db_ingredient in db_recipe.ingredients:
+        recipe.add_ingredient(
+            db_ingredient.name,
+            1.0,  # Default quantity as it's not stored in DB
+            db_ingredient.unit,
+            db_ingredient.cost_per_unit,
+            ""  # Default description
+        )
+    
+    # Load stages
+    for db_stage in sorted(db_recipe.stages, key=lambda x: x.sequence_number):
+        stage = recipe.add_stage_from_db(
+            db_stage.stage_type,
+            db_stage.start_time,
+            db_stage.end_time,
+            db_stage.labor_cost_per_hour
+        )
+        
+        # Add resources to stage
+        for resource in db_stage.resources:
+            cost_per_hour = next(
+                (assoc.cost_per_hour 
+                 for assoc in db_stage.resources 
+                 if assoc.id == resource.id),
+                Decimal('0')
+            )
+            stage.add_resource_dependency(resource.resource_type, cost_per_hour)
+    
+    return recipe
+
+def launch_gui(session: Session, debug: bool = False) -> None:
+    """
+    Launch the GUI with data from the database.
+    
+    Args:
+        session: SQLAlchemy session
+        debug: Enable debug mode for detailed logging
+    """
+    if debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+        )
+    else:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+    
+    logger = logging.getLogger(__name__)
+    logger.info("Launching Recipe Manager GUI")
+    
+    try:
+        root = tk.Tk()
+        app = RecipeManagerGUI(root, session, debug=debug)
+        logger.debug("GUI initialized successfully")
+        root.mainloop()
+    except Exception as e:
+        logger.error(f"Failed to launch GUI: {str(e)}", exc_info=True)
+        raise
+
 def main():
     parser = argparse.ArgumentParser(description='Load recipe database from YAML files directory')
     parser.add_argument('directory', help='Directory containing the YAML files')
@@ -281,6 +354,8 @@ def main():
                       help='Enable debug mode with detailed logging')
     parser.add_argument('--reset', action='store_true',
                       help='Delete existing database before loading')
+    parser.add_argument('--gui', action='store_true',
+                      help='Launch GUI after loading data')
     
     args = parser.parse_args()
     
@@ -290,8 +365,17 @@ def main():
     try:
         if args.reset:
             delete_database(args.db_url)
-            
-        load_db_from_directory(args.directory, args.db_url)
+        
+        engine = load_db_from_directory(args.directory, args.db_url)
+        
+        if args.gui:
+            Session = sessionmaker(bind=engine)
+            session = Session()
+            try:
+                launch_gui(session, debug=args.debug)
+            finally:
+                session.close()
+                
     except Exception as e:
         logger.error(f"Fatal error: {e}")
         sys.exit(1)
