@@ -1,0 +1,41 @@
+resources:
+  - name: Stand Mixer
+    resource_type: STAND_MIXER
+  - name: Oven
+    resource_type: OVEN
+  - name: Cookie Sheet
+    resource_type: COOKIE_SHEET
+  - name: Mixing Bowl
+    resource_type: MIXING_BOWL
+  - name: Workspace
+    resource_type: WORKSPACE
+  - name: Chef
+    resource_type: LABOR
+  - name: Proofing Cabinet
+    resource_type: PROOFING_CABINET
+
+ingredients:
+  - name: All Purpose Flour
+    unit: grams
+    cost_per_unit: 0.002
+  - name: Sugar
+    unit: grams
+    cost_per_unit: 0.003
+  - name: Salt
+    unit: grams
+    cost_per_unit: 0.001
+  - name: Yeast
+    unit: grams
+    cost_per_unit: 0.02
+  - name: Butter
+    unit: grams
+    cost_per_unit: 0.01
+  - name: Eggs
+    unit: units
+    cost_per_unit: 0.25
+  - name: Milk
+    unit: ml
+    cost_per_unit: 0.003
+  - name: Chocolate Chips
+    unit: grams
+    cost_per_unit: 0.015

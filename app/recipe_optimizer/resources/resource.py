@@ -16,6 +16,7 @@ class ResourceType(Enum):
     WORKSPACE = "workspace"
     REFRIGERATOR = "refrigerator"
     PROOFING_CABINET = "proofing_cabinet"
+    LABOR = "labor"
 
 
 @dataclass
