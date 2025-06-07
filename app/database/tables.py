@@ -4,6 +4,7 @@ from sqlalchemy.orm import relationship
 from enum import Enum
 from datetime import datetime
 from decimal import Decimal
+from typing import Any  # Add this import
 
 from app.recipe_optimizer.recipe_stage import StageType, ResourceType
 
@@ -34,6 +35,13 @@ class Recipe(Base):
     name = Column(String(255), nullable=False)
     description = Column(String(1000))
     servings = Column(Integer)
+
+    # Add constructor
+    def __init__(self, name, description=None, servings=None, **kw: Any):
+        super().__init__(**kw)
+        self.name = name
+        self.description = description
+        self.servings = servings
 
     # Relationships
     stages = relationship("Stage", back_populates="recipe")
