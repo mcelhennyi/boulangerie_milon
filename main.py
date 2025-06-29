@@ -2,7 +2,7 @@ import argparse
 import logging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.database.tables import Base, Recipe, Stage, Resource, Ingredient, stage_resource
+from app.database.tables import Base, RecipeTable, StageTable, ResourceTable, IngredientTable, stage_resource
 from app.recipe_optimizer.recipe_stage import StageType, ResourceType
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -10,6 +10,12 @@ import yaml
 import sys
 from pathlib import Path
 from typing import Dict, Any, List
+import tkinter as tk
+from app.gui.gui import RecipeManagerGUI
+from sqlalchemy.orm import Session
+from app.recipe_optimizer.recipe import Recipe
+from app.database.tables import RecipeTable, StageTable, IngredientTable, ResourceTable
+from datetime import datetime
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -142,7 +148,7 @@ def load_db_from_directory(directory_path: str, connection_string: str = 'sqlite
                         raise ValueError(f"Unknown resource type for: {resource_name}")
 
                     logger.debug(f"Creating resource: {resource_name} of type {resource_type}")
-                    resource = Resource(
+                    resource = ResourceTable(
                         name=resource_name,
                         resource_type=resource_type
                     )
@@ -160,7 +166,7 @@ def load_db_from_directory(directory_path: str, connection_string: str = 'sqlite
             for ingredient_data in data.get('ingredients', []):
                 try:
                     logger.debug(f"Creating ingredient: {ingredient_data['name']}")
-                    ingredient = Ingredient(
+                    ingredient = IngredientTable(
                         name=ingredient_data['name'],
                         unit=ingredient_data['unit'],
                         cost_per_unit=Decimal(str(ingredient_data['cost_per_unit']))
@@ -203,7 +209,7 @@ def load_db_from_directory(directory_path: str, connection_string: str = 'sqlite
                                 raise ValueError(f"Invalid stage type: {stage_type_str}")
 
                             logger.debug(f"Creating stage: {stage_type} for recipe {recipe.name}")
-                            stage = Stage(
+                            stage = StageTable(
                                 stage_type=stage_type,
                                 sequence_number=stage_data['sequence_number'],
                                 start_time=parse_datetime(stage_data['start_time']),
@@ -272,14 +278,7 @@ def delete_database(connection_string: str) -> None:
         logger.error(f"Error deleting database: {e}")
         raise
 
-import tkinter as tk
-from app.gui.gui import RecipeManagerGUI
-from sqlalchemy.orm import Session
-from app.recipe_optimizer.recipe import Recipe
-from app.database.tables import Recipe as DBRecipe, Stage, Ingredient, Resource
-from datetime import datetime
-
-def load_recipe_from_db(db_recipe: DBRecipe, session: Session) -> Recipe:
+def load_recipe_from_db(db_recipe: RecipeTable, session: Session) -> Recipe:
     """Convert a database recipe to a Recipe object."""
     recipe = Recipe(db_recipe.name, db_recipe.servings)
     

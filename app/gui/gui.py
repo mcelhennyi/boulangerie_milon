@@ -6,7 +6,14 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional
 from app.recipe_optimizer.recipe import Recipe
 from app.recipe_optimizer.recipe_stage import RecipeStage, StageType, ResourceType
-from app.database.tables import Recipe as DBRecipe, Stage, Ingredient, Resource, recipe_ingredient, stage_resource
+from app.database.tables import (
+    RecipeTable,
+    StageTable,
+    IngredientTable,
+    ResourceTable,
+    recipe_ingredient,
+    stage_resource
+)
 import decimal
 
 class RecipeManagerGUI:
@@ -51,7 +58,7 @@ class RecipeManagerGUI:
         """Refresh the recipe selector with current database state"""
         self.logger.debug("Refreshing recipe selector")
         try:
-            recipes = self.session.query(DBRecipe).all()
+            recipes = self.session.query(RecipeTable).all()
             recipe_names = ["-- Create New Recipe --"] + [recipe.name for recipe in recipes]
             self.recipe_selector['values'] = recipe_names
             self.logger.debug(f"Found {len(recipes)} recipes in database")
@@ -75,22 +82,22 @@ class RecipeManagerGUI:
             
             if self.current_recipe_id is None:
                 self.logger.debug("Creating new recipe")
-                db_recipe = Recipe(name=name, servings=servings)
+                db_recipe = RecipeTable(name=name, servings=servings)
                 self.session.add(db_recipe)
                 self.session.flush()
                 self.current_recipe_id = db_recipe.id
                 self.logger.info(f"Created new recipe with ID: {self.current_recipe_id}")
             else:
                 self.logger.debug(f"Updating existing recipe ID: {self.current_recipe_id}")
-                db_recipe = self.session.query(Recipe).get(self.current_recipe_id)
+                db_recipe = self.session.query(RecipeTable).get(self.current_recipe_id)
                 db_recipe.name = name
                 db_recipe.servings = servings
-            
-            self.session.commit()
-            self.refresh_recipe_selector()
-            self.logger.info(f"Successfully saved recipe: {name}")
-            return True
-            
+
+                self.session.commit()
+                self.refresh_recipe_selector()
+                self.logger.info(f"Successfully saved recipe: {name}")
+                return True
+
         except Exception as e:
             self.logger.error(f"Failed to save recipe: {str(e)}")
             self.session.rollback()
@@ -104,14 +111,14 @@ class RecipeManagerGUI:
                 if not self.save_recipe_to_db():
                     return False
                     
-            db_recipe = self.session.query(DBRecipe).get(self.current_recipe_id)
+            db_recipe = self.session.query(RecipeTable).get(self.current_recipe_id)
             
             # Create or update ingredient
-            ingredient = self.session.query(Ingredient).filter_by(
+            ingredient = self.session.query(IngredientTable).filter_by(
                 name=name, recipe_id=self.current_recipe_id).first()
                 
             if ingredient is None:
-                ingredient = Ingredient(
+                ingredient = IngredientTable(
                     name=name,
                     quantity=quantity,
                     unit=unit,
@@ -140,7 +147,7 @@ class RecipeManagerGUI:
                 if not self.save_recipe_to_db():
                     return False
                     
-            db_recipe = self.session.query(DBRecipe).get(self.current_recipe_id)
+            db_recipe = self.session.query(RecipeTable).get(self.current_recipe_id)
             
             # Calculate sequence number
             sequence_number = len(db_recipe.stages) + 1
@@ -171,20 +178,20 @@ class RecipeManagerGUI:
         """Add resource to stage in database"""
         try:
             # Create or get resource
-            resource = self.session.query(Resource).filter_by(
+            resource = self.session.query(ResourceTable).filter_by(
                 name=resource_type.name,
                 resource_type=resource_type
             ).first()
             
             if resource is None:
-                resource = Resource(
+                resource = ResourceTable(
                     name=resource_type.name,
                     resource_type=resource_type
                 )
                 self.session.add(resource)
             
             # Add to stage with cost
-            stage = self.session.query(Stage).get(stage_id)
+            stage = self.session.query(StageTable).get(stage_id)
             stage.resources.append(resource)
             
             # Set cost in association table
@@ -215,7 +222,7 @@ class RecipeManagerGUI:
             return
             
         # Load the selected recipe from database
-        db_recipe = self.session.query(Recipe).filter(Recipe.name == selection).first()
+        db_recipe = self.session.query(RecipeTable).filter(RecipeTable.name == selection).first()
         if db_recipe:
             self.current_recipe_id = db_recipe.id
             self.load_recipe_from_db(db_recipe)
@@ -257,7 +264,7 @@ class RecipeManagerGUI:
         selector_frame.grid(row=0, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
         
         # Get all recipes from database
-        recipes = self.session.query(DBRecipe).all()
+        recipes = self.session.query(RecipeTable).all()
         recipe_names = ["-- Create New Recipe --"] + [recipe.name for recipe in recipes]
         
         ttk.Label(selector_frame, text="Select Recipe:").pack(side=tk.LEFT, padx=5)

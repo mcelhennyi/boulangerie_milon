@@ -4,13 +4,13 @@ from sqlalchemy.orm import relationship
 from enum import Enum
 from datetime import datetime
 from decimal import Decimal
-from typing import Any  # Add this import
+from typing import Any
 
 from app.recipe_optimizer.recipe_stage import StageType, ResourceType
 
 Base = declarative_base()
 
-# Association table for Recipe and Ingredient
+# Association table for RecipeTable and IngredientTable
 recipe_ingredient = Table(
     'recipe_ingredient',
     Base.metadata,
@@ -18,7 +18,7 @@ recipe_ingredient = Table(
     Column('ingredient_id', Integer, ForeignKey('ingredients.id'), primary_key=True)
 )
 
-# Association table for Stage and Resource
+# Association table for StageTable and ResourceTable
 stage_resource = Table(
     'stage_resource',
     Base.metadata,
@@ -27,8 +27,7 @@ stage_resource = Table(
     Column('cost_per_hour', DECIMAL(10, 2), default=0.00)
 )
 
-
-class Recipe(Base):
+class RecipeTable(Base):
     __tablename__ = 'recipes'
 
     id = Column(Integer, primary_key=True)
@@ -36,19 +35,16 @@ class Recipe(Base):
     description = Column(String(1000))
     servings = Column(Integer)
 
-    # Add constructor
-    def __init__(self, name, description=None, servings=None, **kw: Any):
-        super().__init__(**kw)
+    def __init__(self, name: str, description: str = None, servings: int = None):
         self.name = name
         self.description = description
         self.servings = servings
 
     # Relationships
-    stages = relationship("Stage", back_populates="recipe")
-    ingredients = relationship("Ingredient", secondary=recipe_ingredient, back_populates="recipes")
+    stages = relationship("StageTable", back_populates="recipe")
+    ingredients = relationship("IngredientTable", secondary=recipe_ingredient, back_populates="recipes")
 
-
-class Stage(Base):
+class StageTable(Base):
     __tablename__ = 'stages'
 
     id = Column(Integer, primary_key=True)
@@ -60,11 +56,10 @@ class Stage(Base):
     sequence_number = Column(Integer, nullable=False)  # To maintain stage order
 
     # Relationships
-    recipe = relationship("Recipe", back_populates="stages")
-    resources = relationship("Resource", secondary=stage_resource, back_populates="stages")
+    recipe = relationship("RecipeTable", back_populates="stages")
+    resources = relationship("ResourceTable", secondary=stage_resource, back_populates="stages")
 
-
-class Resource(Base):
+class ResourceTable(Base):
     __tablename__ = 'resources'
 
     id = Column(Integer, primary_key=True)
@@ -72,10 +67,9 @@ class Resource(Base):
     name = Column(String(255), nullable=False)
 
     # Relationships
-    stages = relationship("Stage", secondary=stage_resource, back_populates="resources")
+    stages = relationship("StageTable", secondary=stage_resource, back_populates="resources")
 
-
-class Ingredient(Base):
+class IngredientTable(Base):
     __tablename__ = 'ingredients'
 
     id = Column(Integer, primary_key=True)
@@ -84,8 +78,7 @@ class Ingredient(Base):
     cost_per_unit = Column(DECIMAL(10, 2))
 
     # Relationships
-    recipes = relationship("Recipe", secondary=recipe_ingredient, back_populates="ingredients")
-
+    recipes = relationship("RecipeTable", secondary=recipe_ingredient, back_populates="recipes")
 
 # Create the database and tables
 def init_db(connection_string):
