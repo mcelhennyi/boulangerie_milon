@@ -184,7 +184,7 @@ def load_db_from_directory(directory_path: str, connection_string: str = 'sqlite
             for recipe_data in data.get('recipes', []):
                 try:
                     logger.debug(f"Creating recipe: {recipe_data['name']}")
-                    recipe = Recipe(
+                    recipe = RecipeTable(
                         name=recipe_data['name'],
                         description=recipe_data.get('description'),
                         servings=recipe_data.get('servings')

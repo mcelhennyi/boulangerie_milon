@@ -42,7 +42,7 @@ class RecipeTable(Base):
 
     # Relationships
     stages = relationship("StageTable", back_populates="recipe")
-    ingredients = relationship("IngredientTable", secondary=recipe_ingredient, back_populates="recipes")
+    ingredients = relationship("IngredientTable", secondary=recipe_ingredient, back_populates="recipe_list")
 
 class StageTable(Base):
     __tablename__ = 'stages'
@@ -78,7 +78,7 @@ class IngredientTable(Base):
     cost_per_unit = Column(DECIMAL(10, 2))
 
     # Relationships
-    recipes = relationship("RecipeTable", secondary=recipe_ingredient, back_populates="recipes")
+    recipe_list = relationship("RecipeTable", secondary=recipe_ingredient, back_populates="ingredients")
 
 # Create the database and tables
 def init_db(connection_string):
